@@ -1,11 +1,14 @@
-import { Router } from 'express';
+import express from 'express';
+import {
+  getAllJobs,
+  getMyJobs,
+  getJobById,
+} from '../controllers/jobController.js';
 
-const router = Router();
+const router = express.Router();
 
-router.use((_req, res) => {
-  res.status(501).json({
-    error: { code: 'NOT_IMPLEMENTED', message: 'Chức năng đang được phát triển.' },
-  });
-});
+router.get('/', getAllJobs);
+router.get('/employer/me', getMyJobs);
+router.get('/:id', getJobById);
 
 export default router;
