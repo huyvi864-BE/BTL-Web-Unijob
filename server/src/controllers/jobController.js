@@ -62,3 +62,65 @@ export const getJobById = async (req, res, next) => {
     next(error);
   }
 };
+
+export const createJob = async (req, res, next) => {
+  try {
+    const employerId = req.user?._id || req.body.employer || TEMP_EMPLOYER_ID;
+    const newJob = await Job.create({
+      ...req.body,
+      employer: employerId,
+    });
+
+    res.status(201).json({
+      success: true,
+      message: 'Đăng tin tuyển dụng thành công',
+      data: newJob,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const updateJob = async (req, res, next) => {
+  try {
+    const job = await Job.findById(req.params.id);
+    if (!job) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy tin tuyển dụng' });
+    }
+
+    if (req.user && job.employer.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ success: false, message: 'Bạn không có quyền sửa tin này' });
+    }
+
+    const updatedJob = await Job.findByIdAndUpdate(req.params.id, req.body, {
+      new: true,
+      runValidators: true,
+    });
+
+    res.status(200).json({
+      success: true,
+      message: 'Cập nhật tin tuyển dụng thành công',
+      data: updatedJob,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const deleteJob = async (req, res, next) => {
+  try {
+    const job = await Job.findById(req.params.id);
+    if (!job) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy tin tuyển dụng' });
+    }
+
+    if (req.user && job.employer.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ success: false, message: 'Bạn không có quyền xóa tin này' });
+    }
+
+    await job.deleteOne();
+    res.status(200).json({ success: true, message: 'Đã xóa tin tuyển dụng' });
+  } catch (error) {
+    next(error);
+  }
+};
