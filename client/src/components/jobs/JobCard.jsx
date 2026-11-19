@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 
 const JOB_TYPE_STYLES = {
   'Part-time': 'bg-blue-50 text-blue-700 border-blue-200',

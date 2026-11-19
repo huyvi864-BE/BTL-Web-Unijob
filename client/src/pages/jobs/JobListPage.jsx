@@ -9,11 +9,13 @@ const JobListPage = () => {
   useEffect(() => {
     fetchJobs(1);
   }, [fetchJobs]);
+
   const handlePageChange = (newPage) => {
     if (newPage < 1 || newPage > pagination.totalPages) return;
     fetchJobs(newPage);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
+
   return (
     <div className="max-w-6xl mx-auto px-4 py-8">
       <div className="mb-6">
@@ -26,11 +28,13 @@ const JobListPage = () => {
       </div>
 
       <JobFilterBar />
+
       {!isLoading && !error && (
         <p className="text-sm text-gray-600 mb-4">
           Tìm thấy <strong className="text-gray-900">{pagination.total}</strong> tin tuyển dụng phù hợp
         </p>
       )}
+
       {isLoading && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {[1, 2, 3, 4, 5, 6].map((item) => (
@@ -41,21 +45,24 @@ const JobListPage = () => {
           ))}
         </div>
       )}
+
       {!isLoading && error && (
         <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl text-sm">
           {error}
         </div>
       )}
+
       {!isLoading && !error && jobs.length === 0 && (
         <div className="bg-white border border-gray-200 rounded-xl p-10 text-center">
           <p className="text-gray-700 font-medium mb-1">
             Chưa có tin tuyển dụng nào phù hợp
           </p>
           <p className="text-sm text-gray-500">
-            Thay đổi từ khóa hoặc xóa bớt bộ lọc để xem nhiều công việc hơn.
+            Thay đổi từ khóa hoặc xóa bớt bộ lọc để xem nhiều công việc
           </p>
         </div>
       )}
+
       {!isLoading && !error && jobs.length > 0 && (
         <>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -63,6 +70,7 @@ const JobListPage = () => {
               <JobCard key={job._id} job={job} />
             ))}
           </div>
+
           {pagination.totalPages > 1 && (
             <div className="mt-8 flex items-center justify-center gap-2">
               <button
@@ -72,6 +80,7 @@ const JobListPage = () => {
               >
                 Trước
               </button>
+
               {Array.from({ length: pagination.totalPages }, (_, i) => i + 1).map(
                 (pageNum) => (
                   <button
@@ -87,6 +96,7 @@ const JobListPage = () => {
                   </button>
                 )
               )}
+
               <button
                 onClick={() => handlePageChange(pagination.page + 1)}
                 disabled={pagination.page === pagination.totalPages}
