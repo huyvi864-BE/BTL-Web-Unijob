@@ -1,75 +1,102 @@
 import mongoose from 'mongoose';
 
+export const JOB_CATEGORIES = [
+  'IT & Phần mềm',
+  'Marketing & Truyền thông',
+  'F&B & Dịch vụ',
+  'Gia sư & Đào tạo',
+  'Bán hàng & CSKH',
+  'Khác',
+];
+
+export const JOB_TYPES = [
+  'Part-time',
+  'Full-time',
+  'Internship',
+  'Freelance',
+  'Remote',
+];
+
 const jobSchema = new mongoose.Schema(
   {
     title: {
       type: String,
-      required: [true, 'Tiêu đề công việc là bắt buộc'],
+      required: [true, 'Vui lòng nhập tiêu đề công việc'],
       trim: true,
+      minlength: [5, 'Tiêu đề công việc phải có ít nhất 5 ký tự'],
+      maxlength: [150, 'Tiêu đề công việc không được vượt quá 150 ký tự'],
     },
     companyName: {
       type: String,
-      required: [true, 'Tên doanh nghiệp/cửa hàng là bắt buộc'],
+      required: [true, 'Vui lòng nhập tên công ty hoặc cửa hàng'],
       trim: true,
-    },
-    employer: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User',
-      required: true,
-    },
-    category: {
-      type: String,
-      required: true,
-      enum: [
-        'IT & Phần mềm',
-        'Marketing & Truyền thông',
-        'F&B & Dịch vụ',
-        'Gia sư & Đào tạo',
-        'Bán hàng & CSKH',
-        'Khác',
-      ],
-      index: true,
-    },
-    jobType: {
-      type: String,
-      required: true,
-      enum: ['Part-time', 'Internship', 'Remote'],
-      default: 'Part-time',
-    },
-    salary: {
-      type: String,
-      required: [true, 'Mức lương là bắt buộc'],
-      trim: true,
-    },
-    location: {
-      type: String,
-      required: [true, 'Địa điểm làm việc là bắt buộc'],
-      trim: true,
-      index: true,
+      maxlength: [150, 'Tên công ty không được vượt quá 150 ký tự'],
     },
     description: {
       type: String,
-      required: [true, 'Mô tả công việc là bắt buộc'],
+      required: [true, 'Vui lòng nhập mô tả công việc'],
+      trim: true,
+      minlength: [20, 'Mô tả công việc phải có ít nhất 20 ký tự'],
     },
     requirements: {
       type: String,
-      required: [true, 'Yêu cầu ứng viên là bắt buộc'],
+      trim: true,
+      default: '',
+    },
+    benefits: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+    salary: {
+      type: String,
+      trim: true,
+      default: 'Thỏa thuận',
+    },
+    location: {
+      type: String,
+      required: [true, 'Vui lòng nhập địa điểm làm việc'],
+      trim: true,
+    },
+    jobType: {
+      type: String,
+      enum: {
+        values: JOB_TYPES,
+        message: 'Loại hình công việc không hợp lệ',
+      },
+      default: 'Part-time',
+    },
+    category: {
+      type: String,
+      enum: {
+        values: JOB_CATEGORIES,
+        message: 'Ngành nghề không hợp lệ',
+      },
+      default: 'Khác',
     },
     deadline: {
       type: Date,
-      required: [true, 'Hạn nộp hồ sơ là bắt buộc'],
+      required: false,
+      default: null,
     },
     status: {
       type: String,
       enum: ['active', 'closed'],
       default: 'active',
     },
+    employer: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      required: false,
+    },
   },
-  { timestamps: true }
+  {
+    timestamps: true,
+  }
 );
-
-jobSchema.index({ title: 'text', companyName: 'text', location: 'text' });
-
+jobSchema.index({ status: 1, createdAt: -1 });
+jobSchema.index({ employer: 1, createdAt: -1 });
+jobSchema.index({ category: 1, jobType: 1 });
+jobSchema.index({ title: 'text', companyName: 'text', description: 'text' });
 const Job = mongoose.model('Job', jobSchema);
-
 export default Job;
