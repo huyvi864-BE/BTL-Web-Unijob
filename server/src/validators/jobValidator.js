@@ -1,53 +1,85 @@
+import { JOB_CATEGORIES, JOB_TYPES } from '../models/job.js';
+const isValidString = (value) => typeof value === 'string';
+
 export const validateJobInput = (req, res, next) => {
   const {
     title,
     companyName,
-    category,
-    jobType,
-    salary,
-    location,
     description,
     requirements,
+    benefits,
+    salary,
+    location,
+    jobType,
+    category,
     deadline,
+    status,
   } = req.body;
 
   const errors = [];
 
-  if (!title || title.trim().length < 5) {
-    errors.push('Tiêu đề công việc phải có ít nhất 5 ký tự');
+  if (!isValidString(title) || title.trim().length < 5) {
+    errors.push('Tiêu đề công việc phải là chuỗi và có ít nhất 5 ký tự');
+  } else if (title.trim().length > 150) {
+    errors.push('Tiêu đề công việc không được vượt quá 150 ký tự');
   }
-  if (!companyName || !companyName.trim()) {
-    errors.push('Vui lòng nhập tên công ty hoặc đơn vị tuyển dụng');
+
+  if (!isValidString(companyName) || companyName.trim().length < 2) {
+    errors.push('Tên công ty phải là chuỗi và có ít nhất 2 ký tự');
   }
-  if (!category) {
-    errors.push('Vui lòng chọn ngành nghề');
+
+  if (!isValidString(description) || description.trim().length < 20) {
+    errors.push('Mô tả công việc phải là chuỗi và có ít nhất 20 ký tự');
   }
-  if (!['Part-time', 'Internship', 'Remote'].includes(jobType)) {
-    errors.push('Hình thức làm việc không hợp lệ');
+
+  if (!isValidString(location) || location.trim().length < 2) {
+    errors.push('Địa điểm làm việc phải là chuỗi và không được để trống');
   }
-  if (!salary || !salary.trim()) {
-    errors.push('Vui lòng nhập mức lương');
+
+  if (requirements !== undefined && requirements !== null && !isValidString(requirements)) {
+    errors.push('Yêu cầu công việc phải là chuỗi ký tự');
   }
-  if (!location || !location.trim()) {
-    errors.push('Vui lòng nhập địa điểm làm việc');
+
+  if (benefits !== undefined && benefits !== null && !isValidString(benefits)) {
+    errors.push('Quyền lợi công việc phải là chuỗi ký tự');
   }
-  if (!description || description.trim().length < 15) {
-    errors.push('Mô tả công việc phải có ít nhất 15 ký tự');
+
+  if (salary !== undefined && salary !== null && !isValidString(salary)) {
+    errors.push('Mức lương phải là chuỗi ký tự');
   }
-  if (!requirements || !requirements.trim()) {
-    errors.push('Vui lòng nhập yêu cầu ứng viên');
+
+  if (category !== undefined && category !== '') {
+    if (!isValidString(category) || !JOB_CATEGORIES.includes(category)) {
+      errors.push(`Ngành nghề không hợp lệ. Chỉ chấp nhận: ${JOB_CATEGORIES.join(', ')}`);
+    }
   }
-  if (!deadline || Number.isNaN(Date.parse(deadline))) {
-    errors.push('Hạn nộp hồ sơ không hợp lệ');
+
+  if (jobType !== undefined && jobType !== '') {
+    if (!isValidString(jobType) || !JOB_TYPES.includes(jobType)) {
+      errors.push(`Loại hình công việc không hợp lệ. Chỉ chấp nhận: ${JOB_TYPES.join(', ')}`);
+    }
+  }
+
+  if (status !== undefined && status !== '') {
+    if (!isValidString(status) || !['active', 'closed'].includes(status)) {
+      errors.push('Trạng thái công việc chỉ chấp nhận active hoặc closed');
+    }
+  }
+
+  if (deadline !== undefined && deadline !== null && deadline !== '') {
+    const parsedDate = new Date(deadline);
+    if (Number.isNaN(parsedDate.getTime())) {
+      errors.push('Hạn nộp hồ sơ không đúng định dạng ngày hợp lệ');
+    }
   }
 
   if (errors.length > 0) {
     return res.status(400).json({
       success: false,
-      message: 'Dữ liệu đầu vào không hợp lệ',
+      message: errors[0],
       errors,
     });
   }
-
-  next();
+  return next();
 };
+export default validateJobInput;
