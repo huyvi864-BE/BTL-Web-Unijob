@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { CanceledError } from 'axios';
 
 import { getCurrentUser, loginAccount } from '../api/authUserApi.js';
 import {
@@ -13,56 +14,99 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(() => Boolean(getAccessToken()));
   const [restoreError, setRestoreError] = useState('');
   const [restoreAttempt, setRestoreAttempt] = useState(0);
+  const requestGeneration = useRef(0);
+  const pendingRequest = useRef(null);
+
+  const cancelPendingRequest = useCallback(() => {
+    requestGeneration.current += 1;
+    pendingRequest.current?.abort();
+    pendingRequest.current = null;
+  }, []);
+
+  useEffect(() => () => cancelPendingRequest(), [cancelPendingRequest]);
 
   useEffect(() => onUnauthorized(() => {
+    cancelPendingRequest();
     setUser(null);
     setRestoreError('');
     setLoading(false);
-  }), []);
+  }), [cancelPendingRequest]);
 
   useEffect(() => {
     const token = getAccessToken();
     if (!token) return;
 
-    let active = true;
+    cancelPendingRequest();
+    const generation = requestGeneration.current;
     const controller = new AbortController();
+    pendingRequest.current = controller;
+
+    function isCurrentRequest() {
+      return !controller.signal.aborted
+        && generation === requestGeneration.current
+        && token === getAccessToken();
+    }
 
     async function restoreSession() {
       try {
         const currentUser = await getCurrentUser({ signal: controller.signal });
-        if (active && token === getAccessToken()) setUser(currentUser);
+        if (isCurrentRequest()) setUser(currentUser);
       } catch (error) {
-        if (!active || controller.signal.aborted || token !== getAccessToken()) return;
+        if (!isCurrentRequest()) return;
 
         if (error.response?.status === 401) {
           setAccessToken(null);
           setUser(null);
         } else {
-          // Lỗi mạng hoặc lỗi máy chủ không đồng nghĩa với token hết hạn.
           setRestoreError('Chưa thể xác minh phiên đăng nhập. Hãy kiểm tra kết nối và thử lại.');
         }
       } finally {
-        if (active) setLoading(false);
+        if (!controller.signal.aborted && generation === requestGeneration.current) {
+          setLoading(false);
+        }
+        if (pendingRequest.current === controller) pendingRequest.current = null;
       }
     }
 
     restoreSession();
     return () => {
-      active = false;
       controller.abort();
+      if (pendingRequest.current === controller) pendingRequest.current = null;
     };
-  }, [restoreAttempt]);
+  }, [restoreAttempt, cancelPendingRequest]);
 
   async function login(credentials) {
-    const session = await loginAccount(credentials);
-    setAccessToken(session.accessToken);
-    setUser(session.user);
+    cancelPendingRequest();
+    const generation = requestGeneration.current;
+    const controller = new AbortController();
+    pendingRequest.current = controller;
+    setAccessToken(null);
+    setUser(null);
     setRestoreError('');
     setLoading(false);
-    return session.user;
+
+    try {
+      const session = await loginAccount(credentials, { signal: controller.signal });
+
+      if (controller.signal.aborted || generation !== requestGeneration.current) {
+        throw new CanceledError('Yêu cầu đăng nhập đã được thay thế.');
+      }
+
+      setAccessToken(session.accessToken);
+      setUser(session.user);
+      return session.user;
+    } catch (error) {
+      if (controller.signal.aborted || generation !== requestGeneration.current) {
+        throw new CanceledError('Yêu cầu đăng nhập đã được thay thế.');
+      }
+      throw error;
+    } finally {
+      if (pendingRequest.current === controller) pendingRequest.current = null;
+    }
   }
 
   function logout() {
+    cancelPendingRequest();
     setAccessToken(null);
     setUser(null);
     setRestoreError('');
@@ -74,33 +118,15 @@ export function AuthProvider({ children }) {
       logout();
       return;
     }
+    cancelPendingRequest();
     setRestoreError('');
     setLoading(true);
     setRestoreAttempt((attempt) => attempt + 1);
   }
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout }}>
-      {loading ? (
-        <main className="grid min-h-svh place-items-center bg-slate-50 p-6 text-slate-600" role="status" aria-live="polite">
-          <p>Đang khôi phục phiên đăng nhập…</p>
-        </main>
-      ) : restoreError ? (
-        <main className="grid min-h-svh place-items-center bg-slate-50 p-6 text-slate-700">
-          <section className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 text-center shadow-sm">
-            <h1 className="text-xl font-semibold text-slate-900">Chưa thể khôi phục phiên</h1>
-            <p className="mt-3 text-sm leading-6" role="alert">{restoreError}</p>
-            <div className="mt-5 flex flex-wrap justify-center gap-3">
-              <button type="button" onClick={retryRestore} className="rounded-xl bg-violet-700 px-4 py-2 text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-700">
-                Thử lại
-              </button>
-              <button type="button" onClick={logout} className="rounded-xl border border-slate-300 px-4 py-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-700">
-                Đăng nhập lại
-              </button>
-            </div>
-          </section>
-        </main>
-      ) : children}
+    <AuthContext.Provider value={{ user, loading, restoreError, retryRestore, login, logout }}>
+      {children}
     </AuthContext.Provider>
   );
 }

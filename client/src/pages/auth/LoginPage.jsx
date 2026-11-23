@@ -43,6 +43,8 @@ export default function LoginPage() {
         password,
       });
     } catch (error) {
+      if (error.code === 'ERR_CANCELED') return;
+
       setMessage(
         error.response?.data?.error?.message
         || 'Không thể đăng nhập. Hãy thử lại.',

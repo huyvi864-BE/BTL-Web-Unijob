@@ -8,9 +8,10 @@ export async function registerAccount(body) {
   return data;
 }
 
-export async function loginAccount(body) {
+export async function loginAccount(body, { signal } = {}) {
   const { data } = await api.post('/auth/login', body, {
     publicRequest: true,
+    signal,
   });
 
   return data;
