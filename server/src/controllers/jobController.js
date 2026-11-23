@@ -1,126 +1,263 @@
-import Job from '../models/Job.js';
+import mongoose from 'mongoose';
+import Job from '../models/job.js';
+const escapeRegex = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const ALLOWED_JOB_FIELDS = [
+  'title',
+  'companyName',
+  'description',
+  'requirements',
+  'benefits',
+  'salary',
+  'location',
+  'jobType',
+  'category',
+  'deadline',
+  'status',
+];
 
-const TEMP_EMPLOYER_ID = '650000000000000000000001';
+const pickAllowedFields = (body) => {
+  const sanitized = {};
+  for (const field of ALLOWED_JOB_FIELDS) {
+    if (body[field] !== undefined) {
+      sanitized[field] = body[field];
+    }
+  }
+  return sanitized;
+};
 
 export const getAllJobs = async (req, res, next) => {
   try {
     const { keyword, category, location, jobType, page = 1, limit = 9 } = req.query;
-    const query = { status: 'active' };
 
-    if (keyword && keyword.trim()) {
-      query.$or = [
-        { title: { $regex: keyword.trim(), $options: 'i' } },
-        { companyName: { $regex: keyword.trim(), $options: 'i' } },
-      ];
+    const pageNum = Math.max(1, parseInt(page, 10) || 1);
+    const limitNum = Math.min(50, Math.max(1, parseInt(limit, 10) || 9));
+    const skip = (pageNum - 1) * limitNum;
+
+    const now = new Date();
+    const andConditions = [
+      { status: 'active' },
+      {
+        $or: [
+          { deadline: { $exists: false } },
+          { deadline: null },
+          { deadline: { $gte: now } },
+        ],
+      },
+    ];
+
+    if (typeof keyword === 'string' && keyword.trim()) {
+      const safeKeyword = escapeRegex(keyword.trim());
+      andConditions.push({
+        $or: [
+          { title: { $regex: safeKeyword, $options: 'i' } },
+          { companyName: { $regex: safeKeyword, $options: 'i' } },
+        ],
+      });
     }
 
-    if (category) query.category = category;
-    if (jobType) query.jobType = jobType;
-    if (location && location.trim()) {
-      query.location = { $regex: location.trim(), $options: 'i' };
+    if (typeof category === 'string' && category.trim()) {
+      andConditions.push({ category: category.trim() });
     }
 
-    const skip = (Number(page) - 1) * Number(limit);
-    const total = await Job.countDocuments(query);
-    const jobs = await Job.find(query)
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(Number(limit));
+    if (typeof jobType === 'string' && jobType.trim()) {
+      andConditions.push({ jobType: jobType.trim() });
+    }
 
-    res.status(200).json({
+    if (typeof location === 'string' && location.trim()) {
+      const safeLocation = escapeRegex(location.trim());
+      andConditions.push({
+        location: { $regex: safeLocation, $options: 'i' },
+      });
+    }
+
+    const query = { $and: andConditions };
+
+    const [total, jobs] = await Promise.all([
+      Job.countDocuments(query),
+      Job.find(query).sort({ createdAt: -1 }).skip(skip).limit(limitNum),
+    ]);
+
+    return res.status(200).json({
       success: true,
       data: jobs,
       pagination: {
         total,
-        page: Number(page),
-        totalPages: Math.ceil(total / Number(limit)),
+        page: pageNum,
+        limit: limitNum,
+        totalPages: Math.ceil(total / limitNum),
       },
     });
   } catch (error) {
-    next(error);
+    return next(error);
   }
 };
 
 export const getMyJobs = async (req, res, next) => {
   try {
-    const employerId = req.user?._id || req.query.employerId || TEMP_EMPLOYER_ID;
+    const employerId = req.user?._id || req.user?.id || req.query.employerId;
+
+    if (!employerId || !mongoose.Types.ObjectId.isValid(employerId)) {
+      return res.status(401).json({
+        success: false,
+        message: 'Vui lòng đăng nhập tài khoản nhà tuyển dụng hợp lệ',
+      });
+    }
+
     const jobs = await Job.find({ employer: employerId }).sort({ createdAt: -1 });
-    res.status(200).json({ success: true, data: jobs });
+
+    return res.status(200).json({
+      success: true,
+      data: jobs,
+    });
   } catch (error) {
-    next(error);
+    return next(error);
   }
 };
 
 export const getJobById = async (req, res, next) => {
   try {
-    const job = await Job.findById(req.params.id);
-    if (!job) {
-      return res.status(404).json({ success: false, message: 'Không tìm thấy tin tuyển dụng' });
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Mã công việc (ID) không hợp lệ',
+      });
     }
-    res.status(200).json({ success: true, data: job });
+
+    const job = await Job.findById(id).populate('employer', 'fullName email companyName');
+
+    if (!job) {
+      return res.status(404).json({
+        success: false,
+        message: 'Không tìm thấy tin tuyển dụng',
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: job,
+    });
   } catch (error) {
-    next(error);
+    return next(error);
   }
 };
 
 export const createJob = async (req, res, next) => {
   try {
-    const employerId = req.user?._id || req.body.employer || TEMP_EMPLOYER_ID;
-    const newJob = await Job.create({
-      ...req.body,
-      employer: employerId,
-    });
+    const jobData = pickAllowedFields(req.body);
 
-    res.status(201).json({
+    if (!jobData.deadline) {
+      jobData.deadline = null;
+    }
+
+    const authenticatedUserId = req.user?._id || req.user?.id;
+    if (authenticatedUserId) {
+      jobData.employer = authenticatedUserId;
+    } else if (req.body.employer && mongoose.Types.ObjectId.isValid(req.body.employer)) {
+      jobData.employer = req.body.employer;
+    }
+
+    const newJob = await Job.create(jobData);
+
+    return res.status(201).json({
       success: true,
       message: 'Đăng tin tuyển dụng thành công',
       data: newJob,
     });
   } catch (error) {
-    next(error);
+    return next(error);
   }
 };
-
 export const updateJob = async (req, res, next) => {
   try {
-    const job = await Job.findById(req.params.id);
-    if (!job) {
-      return res.status(404).json({ success: false, message: 'Không tìm thấy tin tuyển dụng' });
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Mã công việc (ID) không hợp lệ',
+      });
     }
 
-    if (req.user && job.employer.toString() !== req.user._id.toString()) {
-      return res.status(403).json({ success: false, message: 'Bạn không có quyền sửa tin này' });
+    const existingJob = await Job.findById(id);
+    if (!existingJob) {
+      return res.status(404).json({
+        success: false,
+        message: 'Không tìm thấy tin tuyển dụng để cập nhật',
+      });
     }
 
-    const updatedJob = await Job.findByIdAndUpdate(req.params.id, req.body, {
+    const authenticatedUserId = req.user?._id || req.user?.id;
+    if (
+      authenticatedUserId &&
+      existingJob.employer &&
+      existingJob.employer.toString() !== authenticatedUserId.toString()
+    ) {
+      return res.status(403).json({
+        success: false,
+        message: 'Bạn không có quyền chỉnh sửa tin tuyển dụng của nhà tuyển dụng khác',
+      });
+    }
+
+    const updateData = pickAllowedFields(req.body);
+    if (updateData.deadline === '') {
+      updateData.deadline = null;
+    }
+
+    const updatedJob = await Job.findByIdAndUpdate(id, updateData, {
       new: true,
       runValidators: true,
     });
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       message: 'Cập nhật tin tuyển dụng thành công',
       data: updatedJob,
     });
   } catch (error) {
-    next(error);
+    return next(error);
   }
 };
 
 export const deleteJob = async (req, res, next) => {
   try {
-    const job = await Job.findById(req.params.id);
-    if (!job) {
-      return res.status(404).json({ success: false, message: 'Không tìm thấy tin tuyển dụng' });
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Mã công việc (ID) không hợp lệ',
+      });
     }
 
-    if (req.user && job.employer.toString() !== req.user._id.toString()) {
-      return res.status(403).json({ success: false, message: 'Bạn không có quyền xóa tin này' });
+    const existingJob = await Job.findById(id);
+    if (!existingJob) {
+      return res.status(404).json({
+        success: false,
+        message: 'Không tìm thấy tin tuyển dụng để xóa',
+      });
     }
 
-    await job.deleteOne();
-    res.status(200).json({ success: true, message: 'Đã xóa tin tuyển dụng' });
+    const authenticatedUserId = req.user?._id || req.user?.id;
+    if (
+      authenticatedUserId &&
+      existingJob.employer &&
+      existingJob.employer.toString() !== authenticatedUserId.toString()
+    ) {
+      return res.status(403).json({
+        success: false,
+        message: 'Bạn không có quyền xóa tin tuyển dụng của nhà tuyển dụng khác',
+      });
+    }
+
+    await Job.findByIdAndDelete(id);
+
+    return res.status(200).json({
+      success: true,
+      message: 'Đã xóa tin tuyển dụng thành công',
+    });
   } catch (error) {
-    next(error);
+    return next(error);
   }
 };
