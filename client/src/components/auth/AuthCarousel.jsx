@@ -5,7 +5,7 @@ const AUTOPLAY_MS = 3000;
 const TRANSITION_MS = 600;
 
 export default function AuthCarousel({ slides }) {
-  // Hai bản sao ở hai đầu giúp ảnh cuối trượt tiếp về ảnh đầu một cách liền mạch.
+  // bản sao ảnh trượt một cách mượt mà
   const count = slides.length;
   const items = [slides[count - 1], ...slides, slides[0]];
   const [position, setPosition] = useState(1);
@@ -40,7 +40,7 @@ export default function AuthCarousel({ slides }) {
     return () => window.clearTimeout(timer);
   }, [activeSlide, count, isDragging]);
 
-  // Dự phòng khi trình duyệt không phát transitionend, ví dụ lúc đổi tab.
+  // Dự phòng khi trình duyệt không phát transitionend
   useEffect(() => {
     if (!isMoving) return;
     const timer = window.setTimeout(settle, TRANSITION_MS + 100);
