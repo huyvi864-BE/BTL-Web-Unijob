@@ -33,7 +33,7 @@ export function setAccessToken(token) {
       window.sessionStorage.removeItem(TOKEN_KEY);
     }
   } catch {
-    // Khi trình duyệt chặn lưu trữ, phiên vẫn dùng được trong bộ nhớ.
+    // phiên vẫn dùng được trong bộ nhớ.
   }
 }
 
