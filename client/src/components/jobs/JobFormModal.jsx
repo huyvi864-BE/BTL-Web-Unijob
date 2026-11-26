@@ -1,53 +1,79 @@
-import { useEffect, useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { X } from 'lucide-react';
 import useJobStore from '../../store/jobStore';
-import { JOB_CATEGORIES, JOB_TYPES } from './JobFilterBar';
+import {
+  JOB_CATEGORIES,
+  JOB_TYPES,
+  normalizeJobCategory,
+} from './JobFilterBar';
 
-const defaultFormState = {
-  title: '',
-  companyName: '',
-  description: '',
-  requirements: '',
-  benefits: '',
-  salary: 'Thỏa thuận',
-  location: '',
-  jobType: 'Part-time',
-  category: 'IT & Phần mềm',
-  deadline: '',
-  status: 'active',
-};
+const createSubmissionKey = () =>
+  typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+    ? crypto.randomUUID()
+    : `submit_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
 
-const JobFormModal = ({ isOpen, onClose, editingJob, initialData, job, onSuccess }) => {
-  const targetJob = editingJob || initialData || job || null;
+const JobFormModal = ({ isOpen, onClose, job = null }) => {
   const { createJob, updateJob } = useJobStore();
+  const isEditing = Boolean(job);
 
-  const [formData, setFormData] = useState(defaultFormState);
-  const [formError, setFormError] = useState('');
+  const [formData, setFormData] = useState({
+    title: '',
+    companyName: '',
+    category: JOB_CATEGORIES[0],
+    jobType: JOB_TYPES[0],
+    salary: '',
+    location: '',
+    description: '',
+    requirements: '',
+    benefits: '',
+    deadline: '',
+    status: 'open',
+  });
+
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [formError, setFormError] = useState('');
+  const idempotencyKeyRef = useRef(createSubmissionKey());
 
   useEffect(() => {
     if (!isOpen) return;
+    idempotencyKeyRef.current = createSubmissionKey();
     setFormError('');
 
-    if (targetJob) {
+    if (job) {
+      const normalizedCat = normalizeJobCategory(job.category);
+      const validCategory = JOB_CATEGORIES.includes(normalizedCat)
+        ? normalizedCat
+        : 'Khác';
+
       setFormData({
-        title: targetJob.title || '',
-        companyName: targetJob.companyName || '',
-        description: targetJob.description || '',
-        requirements: targetJob.requirements || '',
-        benefits: targetJob.benefits || '',
-        salary: targetJob.salary || 'Thỏa thuận',
-        location: targetJob.location || '',
-        jobType: JOB_TYPES.includes(targetJob.jobType) ? targetJob.jobType : 'Part-time',
-        category: JOB_CATEGORIES.includes(targetJob.category) ? targetJob.category : 'Khác',
-        deadline: targetJob.deadline
-          ? new Date(targetJob.deadline).toISOString().split('T')[0]
-          : '',
-        status: targetJob.status || 'active',
+        title: job.title || '',
+        companyName: job.companyName || '',
+        category: validCategory,
+        jobType: JOB_TYPES.includes(job.jobType) ? job.jobType : JOB_TYPES[0],
+        salary: job.salary || '',
+        location: job.location || '',
+        description: job.description || '',
+        requirements: job.requirements || '',
+        benefits: job.benefits || '',
+        deadline: job.deadline ? String(job.deadline).slice(0, 10) : '',
+        status: job.status || 'open',
       });
     } else {
-      setFormData(defaultFormState);
+      setFormData({
+        title: '',
+        companyName: '',
+        category: JOB_CATEGORIES[0],
+        jobType: JOB_TYPES[0],
+        salary: '',
+        location: '',
+        description: '',
+        requirements: '',
+        benefits: '',
+        deadline: '',
+        status: 'open',
+      });
     }
-  }, [isOpen, targetJob]);
+  }, [isOpen, job]);
 
   if (!isOpen) return null;
 
@@ -64,18 +90,18 @@ const JobFormModal = ({ isOpen, onClose, editingJob, initialData, job, onSuccess
     const payload = {
       ...formData,
       deadline: formData.deadline ? formData.deadline : null,
+      ...(isEditing && job?.__v !== undefined ? { version: job.__v } : {}),
     };
 
     try {
-      if (targetJob?._id) {
-        await updateJob(targetJob._id, payload);
+      if (isEditing) {
+        await updateJob(job._id, payload);
       } else {
-        await createJob(payload);
+        await createJob(payload, idempotencyKeyRef.current);
       }
-      if (onSuccess) onSuccess();
       onClose();
     } catch (err) {
-      setFormError(err.message || 'Có lỗi xảy ra khi lưu tin tuyển dụng');
+      setFormError(err.message || 'Có lỗi xảy ra, vui lòng kiểm tra lại');
     } finally {
       setIsSubmitting(false);
     }
@@ -281,7 +307,11 @@ const JobFormModal = ({ isOpen, onClose, editingJob, initialData, job, onSuccess
               disabled={isSubmitting}
               className="px-5 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 rounded-lg transition-colors cursor-pointer"
             >
-              {isSubmitting ? 'Đang lưu...' : targetJob ? 'Lưu thay đổi' : 'Đăng tin ngay'}
+             {isSubmitting
+                ? 'Đang lưu...'
+                : isEditing
+                ? 'Lưu thay đổi'
+                : 'Đăng tin ngay'}
             </button>
           </div>
         </form>

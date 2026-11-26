@@ -1,19 +1,31 @@
-import { useEffect, useState } from 'react';
-import { Link, useParams } from 'react-router';
-import useJobStore from '../../store/jobStore';
+import React, { useEffect, useState } from 'react';
+import { useParams, Link } from 'react-router-dom';
+import {
+  ArrowLeft,
+  Building2,
+  MapPin,
+  DollarSign,
+  Briefcase,
+  Calendar,
+  Clock,
+  CheckCircle2,
+  AlertCircle,
+} from 'lucide-react';
+import useJobStore, { isDeadlineExpired } from '../../store/jobStore';
 
 const JobDetailPage = () => {
   const { id } = useParams();
-  const { currentJob, isLoading, error, fetchJobById } = useJobStore();
-  const [applyNotice, setApplyNotice] = useState(false);
+  const { currentJob, isFetchingDetail, error, fetchJobById } = useJobStore();
+  const [applyNotice, setApplyNotice] = useState('');
 
   useEffect(() => {
+    setApplyNotice('');
     if (id) {
       fetchJobById(id);
     }
   }, [id, fetchJobById]);
 
-  if (isLoading) {
+  if (isFetchingDetail) {
     return (
       <div className="max-w-4xl mx-auto px-4 py-12 text-center text-sm text-gray-500">
         Đang tải thông tin chi tiết việc làm...

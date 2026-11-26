@@ -8,6 +8,19 @@ export const JOB_CATEGORIES = [
   'Bán hàng & CSKH',
   'Khác',
 ];
+export const LEGACY_CATEGORY_MAP = {
+  'Công nghệ thông tin': 'IT & Phần mềm',
+  'Kinh doanh & Bán hàng': 'Bán hàng & CSKH',
+  'Giáo dục & Đào tạo': 'Gia sư & Đào tạo',
+  'Dịch vụ & F&B': 'F&B & Dịch vụ',
+  'Thiết kế & Sáng tạo': 'Khác',
+};
+
+export const normalizeJobCategory = (category) => {
+  if (!category || typeof category !== 'string') return 'Khác';
+  const trimmed = category.trim();
+  return LEGACY_CATEGORY_MAP[trimmed] || trimmed;
+};
 
 export const JOB_TYPES = [
   'Part-time',
@@ -51,7 +64,9 @@ const JobFilterBar = ({ filters: propFilters, onFilterChange, onReset }) => {
       store.fetchJobs({ page: 1 });
     }
   };
-
+  const selectedCategory = filters.category
+    ? normalizeJobCategory(filters.category)
+    : '';
   return (
     <form
       onSubmit={handleSubmit}

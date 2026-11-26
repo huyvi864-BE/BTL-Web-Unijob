@@ -1,43 +1,39 @@
-import { useEffect, useState } from 'react';
-import { Link } from 'react-router';
-import useJobStore from '../../store/jobStore';
+import React, { useEffect, useState } from 'react';
+import { Plus, Pencil, Trash2, Briefcase, Calendar, MapPin } from 'lucide-react';
+import useJobStore, { isDeadlineExpired } from '../../store/jobStore';
 import JobFormModal from '../../components/jobs/JobFormModal';
 
 const EmployerJobDashboard = () => {
-  const { myJobs, isLoading, error, fetchMyJobs, deleteJob } = useJobStore();
+  const { myJobs, isFetchingMyJobs, error, fetchMyJobs, deleteJob } = useJobStore();
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingJob, setEditingJob] = useState(null);
+  const [selectedJob, setSelectedJob] = useState(null);
 
   useEffect(() => {
     fetchMyJobs();
   }, [fetchMyJobs]);
 
   const handleOpenCreate = () => {
-    setEditingJob(null);
+    setSelectedJob(null);
     setIsModalOpen(true);
   };
 
   const handleOpenEdit = (job) => {
-    setEditingJob(job);
+    setSelectedJob(job);
     setIsModalOpen(true);
   };
 
-  const handleDelete = async (job) => {
-    const confirmed = window.confirm(`Bạn có chắc chắn muốn xóa tin "${job.title}" không?`);
-    if (!confirmed) return;
-
+  const handleDelete = async (id, title) => {
+    if (!window.confirm(`Bạn có chắc muốn xóa tin "${title}" không?`)) return;
     try {
-      await deleteJob(job._id);
-    } catch (err) {
-      alert(err.message || 'Không thể xóa tin tuyển dụng');
-    }
+      await deleteJob(id);
+    } catch {
+      }
   };
 
-  const isJobExpired = (job) => Boolean(job.deadline && new Date(job.deadline) < new Date());
-
-  const activeCount = myJobs.filter((j) => j.status === 'active' && !isJobExpired(j)).length;
-  const closedOrExpiredCount = myJobs.length - activeCount;
-
+  const validJobs = Array.isArray(myJobs) ? myJobs.filter(Boolean) : [];
+  const openCount = validJobs.filter(
+    (j) => j.status === 'open' && !isDeadlineExpired(j.deadline)
+  ).length;
   return (
     <div className="max-w-6xl mx-auto px-4 py-8">
     
