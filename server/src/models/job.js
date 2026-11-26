@@ -9,6 +9,20 @@ export const JOB_CATEGORIES = [
   'Khác',
 ];
 
+export const LEGACY_CATEGORY_MAP = {
+  'Công nghệ thông tin': 'IT & Phần mềm',
+  'Kinh doanh & Bán hàng': 'Bán hàng & CSKH',
+  'Giáo dục & Đào tạo': 'Gia sư & Đào tạo',
+  'Dịch vụ & F&B': 'F&B & Dịch vụ',
+  'Thiết kế & Sáng tạo': 'Khác',
+};
+
+export const normalizeJobCategory = (category) => {
+  if (typeof category !== 'string') return category;
+  const trimmed = category.trim();
+  return LEGACY_CATEGORY_MAP[trimmed] || trimmed;
+};
+
 export const JOB_TYPES = [
   'Part-time',
   'Full-time',
@@ -89,14 +103,31 @@ const jobSchema = new mongoose.Schema(
       ref: 'User',
       required: false,
     },
+  idempotencyKey: {
+      type: String,
+      trim: true,
+      default: undefined,
+    },
   },
   {
     timestamps: true,
   }
 );
+jobSchema.pre('validate', function () {
+  if (this.category) {
+    this.category = normalizeJobCategory(this.category);
+  }
+});
+
 jobSchema.index({ status: 1, createdAt: -1 });
+jobSchema.index({ status: 1, deadline: 1, createdAt: -1 });
 jobSchema.index({ employer: 1, createdAt: -1 });
 jobSchema.index({ category: 1, jobType: 1 });
 jobSchema.index({ title: 'text', companyName: 'text', description: 'text' });
+jobSchema.index(
+  { employer: 1, idempotencyKey: 1 },
+  { unique: true, sparse: true }
+);
+
 const Job = mongoose.model('Job', jobSchema);
 export default Job;

@@ -1,7 +1,20 @@
-import { JOB_CATEGORIES, JOB_TYPES } from '../models/job.js';
+import {
+  JOB_CATEGORIES,
+  JOB_TYPES,
+  normalizeJobCategory,
+} from '../models/job.js';
+
 const isValidString = (value) => typeof value === 'string';
 
 export const validateJobInput = (req, res, next) => {
+  if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) {
+    const errorMsg = 'Dữ liệu gửi lên không hợp lệ (request body phải là JSON object)';
+    return res.status(400).json({
+      success: false,
+      message: errorMsg,
+      errors: [errorMsg],
+    });
+  }
   const {
     title,
     companyName,
@@ -49,7 +62,7 @@ export const validateJobInput = (req, res, next) => {
   }
 
   if (category !== undefined && category !== '') {
-    if (!isValidString(category) || !JOB_CATEGORIES.includes(category)) {
+    if (!isValidString(category) || !JOB_CATEGORIES.includes(normalizeJobCategory(category))) {
       errors.push(`Ngành nghề không hợp lệ. Chỉ chấp nhận: ${JOB_CATEGORIES.join(', ')}`);
     }
   }
