@@ -1,67 +1,79 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { X } from 'lucide-react';
 import useJobStore from '../../store/jobStore';
+import {
+  JOB_CATEGORIES,
+  JOB_TYPES,
+  normalizeJobCategory,
+} from './JobFilterBar';
 
-const CATEGORIES = [
-  'Công nghệ thông tin',
-  'Marketing & Truyền thông',
-  'Kinh doanh & Bán hàng',
-  'Giáo dục & Đào tạo',
-  'Thiết kế & Sáng tạo',
-  'Dịch vụ & F&B',
-  'Khác',
-];
+const createSubmissionKey = () =>
+  typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+    ? crypto.randomUUID()
+    : `submit_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
 
-const JOB_TYPES = [
-  { value: 'Part-time', label: 'Bán thời gian (Part-time)' },
-  { value: 'Internship', label: 'Thực tập (Internship)' },
-  { value: 'Remote', label: 'Làm từ xa (Remote)' },
-];
+const JobFormModal = ({ isOpen, onClose, job = null }) => {
+  const { createJob, updateJob } = useJobStore();
+  const isEditing = Boolean(job);
 
-const DEFAULT_FORM = {
-  title: '',
-  companyName: '',
-  category: 'Công nghệ thông tin',
-  jobType: 'Part-time',
-  salary: '',
-  location: '',
-  deadline: '',
-  status: 'active',
-  description: '',
-  requirements: '',
-};
+  const [formData, setFormData] = useState({
+    title: '',
+    companyName: '',
+    category: JOB_CATEGORIES[0],
+    jobType: JOB_TYPES[0],
+    salary: '',
+    location: '',
+    description: '',
+    requirements: '',
+    benefits: '',
+    deadline: '',
+    status: 'open',
+  });
 
-const JobFormModal = ({ isOpen, onClose, initialData = null }) => {
-  const { createJob, updateJob, isLoading } = useJobStore();
-  const [formData, setFormData] = useState(DEFAULT_FORM);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [formError, setFormError] = useState('');
-
-  const isEditMode = Boolean(initialData);
+  const idempotencyKeyRef = useRef(createSubmissionKey());
 
   useEffect(() => {
-    if (isOpen) {
-      setFormError('');
-      if (initialData) {
-        setFormData({
-          title: initialData.title || '',
-          companyName: initialData.companyName || '',
-          category: initialData.category || 'Công nghệ thông tin',
-          jobType: initialData.jobType || 'Part-time',
-          salary: initialData.salary || '',
-          location: initialData.location || '',
-          deadline: initialData.deadline
-            ? new Date(initialData.deadline).toISOString().split('T')[0]
-            : '',
-          status: initialData.status || 'active',
-          description: initialData.description || '',
-          requirements: Array.isArray(initialData.requirements)
-            ? initialData.requirements.join('\n')
-            : initialData.requirements || '',
-        });
-      } else {
-        setFormData(DEFAULT_FORM);
-      }
+    if (!isOpen) return;
+    idempotencyKeyRef.current = createSubmissionKey();
+    setFormError('');
+
+    if (job) {
+      const normalizedCat = normalizeJobCategory(job.category);
+      const validCategory = JOB_CATEGORIES.includes(normalizedCat)
+        ? normalizedCat
+        : 'Khác';
+
+      setFormData({
+        title: job.title || '',
+        companyName: job.companyName || '',
+        category: validCategory,
+        jobType: JOB_TYPES.includes(job.jobType) ? job.jobType : JOB_TYPES[0],
+        salary: job.salary || '',
+        location: job.location || '',
+        description: job.description || '',
+        requirements: job.requirements || '',
+        benefits: job.benefits || '',
+        deadline: job.deadline ? String(job.deadline).slice(0, 10) : '',
+        status: job.status || 'open',
+      });
+    } else {
+      setFormData({
+        title: '',
+        companyName: '',
+        category: JOB_CATEGORIES[0],
+        jobType: JOB_TYPES[0],
+        salary: '',
+        location: '',
+        description: '',
+        requirements: '',
+        benefits: '',
+        deadline: '',
+        status: 'open',
+      });
     }
-  }, [isOpen, initialData]);
+  }, [isOpen, job]);
 
   if (!isOpen) return null;
 
@@ -73,20 +85,25 @@ const JobFormModal = ({ isOpen, onClose, initialData = null }) => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setFormError('');
+    setIsSubmitting(true);
 
     const payload = {
       ...formData,
-      deadline: formData.deadline || undefined,
+      deadline: formData.deadline ? formData.deadline : null,
+      ...(isEditing && job?.__v !== undefined ? { version: job.__v } : {}),
     };
 
-    const result = isEditMode
-      ? await updateJob(initialData._id, payload)
-      : await createJob(payload);
-
-    if (result.success) {
+    try {
+      if (isEditing) {
+        await updateJob(job._id, payload);
+      } else {
+        await createJob(payload, idempotencyKeyRef.current);
+      }
       onClose();
-    } else {
-      setFormError(result.message || 'Có lỗi, vui lòng kiểm tra lại thông tin');
+    } catch (err) {
+      setFormError(err.message || 'Có lỗi xảy ra, vui lòng kiểm tra lại');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -95,7 +112,7 @@ const JobFormModal = ({ isOpen, onClose, initialData = null }) => {
       <div className="bg-white rounded-2xl border border-gray-200 w-full max-w-2xl shadow-xl overflow-hidden my-8">
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 bg-gray-50">
           <h2 className="text-lg font-bold text-gray-900">
-            {isEditMode ? 'Chỉnh sửa tin tuyển dụng' : 'Đăng tin tuyển dụng mới'}
+            {targetJob ? 'Chỉnh sửa tin tuyển dụng' : 'Đăng tin tuyển dụng mới'}
           </h2>
           <button
             type="button"
@@ -112,7 +129,8 @@ const JobFormModal = ({ isOpen, onClose, initialData = null }) => {
               {formError}
             </div>
           )}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Tiêu đề công việc <span className="text-red-500">*</span>
@@ -121,15 +139,17 @@ const JobFormModal = ({ isOpen, onClose, initialData = null }) => {
                 type="text"
                 name="title"
                 required
+                minLength={5}
                 value={formData.title}
                 onChange={handleChange}
+                placeholder="Thực tập sinh..."
                 className="w-full px-3.5 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Tên công ty / Đơn vị <span className="text-red-500">*</span>
+                Tên công ty / Cửa hàng <span className="text-red-500">*</span>
               </label>
               <input
                 type="text"
@@ -137,23 +157,22 @@ const JobFormModal = ({ isOpen, onClose, initialData = null }) => {
                 required
                 value={formData.companyName}
                 onChange={handleChange}
+                placeholder="Tập đoàn Amber..."
                 className="w-full px-3.5 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Ngành nghề <span className="text-red-500">*</span>
-              </label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Ngành nghề</label>
               <select
                 name="category"
                 value={formData.category}
                 onChange={handleChange}
                 className="w-full px-3.5 py-2 text-sm border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
-                {CATEGORIES.map((cat) => (
+                {JOB_CATEGORIES.map((cat) => (
                   <option key={cat} value={cat}>
                     {cat}
                   </option>
@@ -162,9 +181,7 @@ const JobFormModal = ({ isOpen, onClose, initialData = null }) => {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Hình thức làm việc <span className="text-red-500">*</span>
-              </label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Loại hình</label>
               <select
                 name="jobType"
                 value={formData.jobType}
@@ -172,30 +189,28 @@ const JobFormModal = ({ isOpen, onClose, initialData = null }) => {
                 className="w-full px-3.5 py-2 text-sm border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 {JOB_TYPES.map((type) => (
-                  <option key={type.value} value={type.value}>
-                    {type.label}
+                  <option key={type} value={type}>
+                    {type}
                   </option>
                 ))}
               </select>
             </div>
-          </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Mức lương <span className="text-red-500">*</span>
-              </label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Mức lương</label>
               <input
                 type="text"
                 name="salary"
-                required
                 value={formData.salary}
                 onChange={handleChange}
+                placeholder="30K/giờ hoặc 5-6Tr/tháng..."
                 className="w-full px-3.5 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
+          </div>
 
-            <div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="sm:col-span-1">
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Địa điểm làm việc <span className="text-red-500">*</span>
               </label>
@@ -205,14 +220,14 @@ const JobFormModal = ({ isOpen, onClose, initialData = null }) => {
                 required
                 value={formData.location}
                 onChange={handleChange}
+                placeholder="Hà Đông, Thanh Xuân,..."
                 className="w-full px-3.5 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Hạn nộp hồ sơ
+                Hạn nộp (Tùy chọn)
               </label>
               <input
                 type="date"
@@ -223,22 +238,18 @@ const JobFormModal = ({ isOpen, onClose, initialData = null }) => {
               />
             </div>
 
-            {isEditMode && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Trạng thái tuyển dụng
-                </label>
-                <select
-                  name="status"
-                  value={formData.status}
-                  onChange={handleChange}
-                  className="w-full px-3.5 py-2 text-sm border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="active">Đang tuyển (Hiển thị)</option>
-                  <option value="closed">Ngừng tuyển (Đóng tin)</option>
-                </select>
-              </div>
-            )}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Trạng thái</label>
+              <select
+                name="status"
+                value={formData.status}
+                onChange={handleChange}
+                className="w-full px-3.5 py-2 text-sm border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="active">Đang tuyển (Active)</option>
+                <option value="closed">Ngừng tuyển (Closed)</option>
+              </select>
+            </div>
           </div>
 
           <div>
@@ -249,24 +260,40 @@ const JobFormModal = ({ isOpen, onClose, initialData = null }) => {
               name="description"
               rows={3}
               required
+              minLength={20}
               value={formData.description}
               onChange={handleChange}
+              placeholder="Mô tả chi tiết công việc, thời gian làm việc (tối thiểu 20 ký tự)..."
               className="w-full px-3.5 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Yêu cầu ứng viên <span className="text-red-500">*</span>
-            </label>
-            <textarea
-              name="requirements"
-              rows={3}
-              required
-              value={formData.requirements}
-              onChange={handleChange}
-              className="w-full px-3.5 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Yêu cầu ứng viên</label>
+              <textarea
+                name="requirements"
+                rows={3}
+                value={formData.requirements}
+                onChange={handleChange}
+                placeholder="Kỹ năng, kinh nghiệm mong muốn..."
+                className="w-full px-3.5 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Quyền lợi</label>
+              <textarea
+                name="benefits"
+                rows={3}
+                value={formData.benefits}
+                onChange={handleChange}
+                placeholder="Phụ cấp, thưởng, đào tạo..."
+                className="w-full px-3.5 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
           </div>
+
           <div className="pt-4 border-t border-gray-100 flex items-center justify-end gap-3">
             <button
               type="button"
@@ -277,12 +304,12 @@ const JobFormModal = ({ isOpen, onClose, initialData = null }) => {
             </button>
             <button
               type="submit"
-              disabled={isLoading}
+              disabled={isSubmitting}
               className="px-5 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 rounded-lg transition-colors cursor-pointer"
             >
-              {isLoading
+             {isSubmitting
                 ? 'Đang lưu...'
-                : isEditMode
+                : isEditing
                 ? 'Lưu thay đổi'
                 : 'Đăng tin ngay'}
             </button>
@@ -292,4 +319,5 @@ const JobFormModal = ({ isOpen, onClose, initialData = null }) => {
     </div>
   );
 };
+
 export default JobFormModal;

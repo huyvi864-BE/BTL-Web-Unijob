@@ -9,7 +9,12 @@ import applicationRoutes from './routes/applicationRoutes.js';
 
 const app = express();
 
-app.use(cors({ origin: process.env.CLIENT_ORIGIN || 'http://localhost:5173' }));
+app.use(
+  cors({
+    origin: process.env.CLIENT_ORIGIN || 'http://localhost:5173',
+    credentials: true,
+  })
+);
 app.use(express.json({ limit: '32kb' }));
 
 app.get('/api/health', (_req, res) => {
@@ -25,7 +30,7 @@ app.use('/api/jobs', jobRoutes);
 app.use('/api/applications', applicationRoutes);
 
 app.use((_req, _res, next) => {
-  next(new HttpError(404, 'NOT_FOUND', 'Không tìm thấy API.'));
+  next(new HttpError(404, 'NOT_FOUND','Không tìm thấy đường dẫn'));
 });
 app.use(errorMiddleware);
 
