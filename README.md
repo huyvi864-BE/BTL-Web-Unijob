@@ -1,4 +1,4 @@
-# BTL-Web-Unijob — Nền tảng Kết nối Việc làm Bán thời gian & Thực tập cho Sinh viên
+# Unijob — Nền tảng Kết nối Việc làm Bán thời gian & Thực tập cho Sinh viên
 
 **BTL-Web-Unijob** là ứng dụng Web Fullstack được thiết kế theo kiến trúc **Client–Server phân tách (Decoupled Architecture)**, hỗ trợ sinh viên tìm kiếm cơ hội thực tập, việc làm bán thời gian (part-time) và giúp doanh nghiệp quản lý quy trình tuyển dụng trực tuyến.
 
@@ -29,6 +29,19 @@ npm.cmd ci
 if (-not (Test-Path -LiteralPath '.env')) {
   Copy-Item .env.example .env
 }
+```
+
+**Trước khi chạy backend**, mở `server/.env` và điền:
+
+- `MONGODB_URI`: chuỗi kết nối MongoDB thật của nhóm, trỏ đến database `unijob`.
+- `JWT_SECRET`: khóa ngẫu nhiên dài tối thiểu 32 ký tự, dùng để ký JWT.
+- `CLIENT_ORIGIN=http://localhost:5173` và `PORT=5000` cho môi trường cục bộ.
+
+ File `.env.example` để trống hai giá trị bắt buộc; chỉ sao chép file rồi chạy ngay sẽ khiến backend dừng.
+
+Sau khi lưu `.env`, chạy trong Terminal đang ở thư mục `server`:
+
+```powershell
 npm.cmd run dev
 ```
 
@@ -53,8 +66,8 @@ Khi cả hai tiến trình Development Server đang hoạt động, hệ thống
 | :--- | :--- | :--- |
 | **Ứng dụng Web (Frontend SPA)** | [http://localhost:5173](http://localhost:5173) | Giao diện người dùng React/Vite với 9 định tuyến màn hình (Routes) |
 | **API Health Check** | [http://localhost:5000/api/health](http://localhost:5000/api/health) | Endpoint giám sát trạng thái vận hành của Express Server và kết nối CSDL |
-| **Auth Router** | `http://localhost:5000/api/auth` | Định tuyến xác thực người dùng, cấp phát JWT và kiểm tra phiên (`/me`) |
-| **Users & Profiles Router** | `http://localhost:5000/api/users` | Định tuyến quản lý hồ sơ năng lực Sinh viên và thông tin Doanh nghiệp |
+| **Auth Router** | `http://localhost:5000/api/auth` | Đăng ký (`POST /register`) và đăng nhập, cấp JWT (`POST /login`) |
+| **Users & Profiles Router** | `http://localhost:5000/api/users` | Kiểm tra phiên bằng `GET /me` có Bearer token; các API hồ sơ được phát triển tại router này |
 | **Jobs Router** | `http://localhost:5000/api/jobs` | Định tuyến CRUD tin tuyển dụng và truy vấn lọc công việc đa điều kiện |
 | **Applications Router** | `http://localhost:5000/api/applications` | Định tuyến nộp hồ sơ ứng tuyển, xét duyệt trạng thái và thống kê dữ liệu |
 
@@ -74,7 +87,7 @@ Nhóm áp dụng mô hình phân công theo chiều dọc (**Giao diện UI $\ri
 
 ## 5. Trạng thái Khởi tạo & Quy chuẩn Môi trường (Current Project Status)
 
-- **Kiến trúc Khung (Scaffold & Routing):** Bản dựng khung hiện tại đã thiết lập hoàn chỉnh **9 trang giao diện mẫu (View Placeholders)** trên Frontend tương ứng với **4 Router API** trên Backend (`/api/auth`, `/api/users`, `/api/jobs`, `/api/applications`).
+- **Kiến trúc Khung (Scaffold & Routing):** Đã thiết lập **9 định tuyến giao diện** và **4 Router API** trên Backend (`/api/auth`, `/api/users`, `/api/jobs`, `/api/applications`). Đăng ký, đăng nhập và khôi phục phiên đã có chức năng; các trang nghiệp vụ còn lại được tiếp tục hoàn thiện theo phân công.
 - **Chuẩn phản hồi Endpoint chờ triển khai:** Các nhánh Router hoặc Controller đang trong quá trình phát triển được cấu hình trả về mã trạng thái chuẩn **HTTP `501 Not Implemented`** để phân biệt rõ với lỗi đường dẫn (`404 Not Found`) hoặc lỗi máy chủ (`500 Internal Server Error`).
-- **Cơ chế Giám sát Kết nối CSDL (Health Telemetry):** Ở bước dựng khung, nếu máy cục bộ chưa cấu hình chuỗi kết nối MongoDB Atlas, máy chủ Express vẫn khởi chạy bình thường để phục vụ kiểm thử giao diện và phản hồi trạng thái `database: disconnected` tại endpoint `/api/health`.
-- **Cô lập Biến Môi trường (Environment Isolation):** Kho lưu trữ Git chỉ lưu giữ tệp cấu hình mẫu `.env.example` nhằm bảo mật thông tin nhạy cảm. Các thông số thực tế (như `MONGO_URI`, `JWT_SECRET`) được lưu trữ cục bộ trong tệp `.env` trên máy cá nhân của từng thành viên và đã được loại trừ khỏi lịch sử Git thông qua `.gitignore`.
+- **Kết nối CSDL:** Backend chỉ bắt đầu lắng nghe sau khi cấu hình hợp lệ và kết nối MongoDB thành công. Nếu thiếu `MONGODB_URI`, `JWT_SECRET` ngắn hơn 32 ký tự hoặc kết nối thất bại, backend sẽ dừng. Sau khi khởi động, `/api/health` trả về `database: connected` khi CSDL đang kết nối.
+- **Cô lập Biến Môi trường (Environment Isolation):** Kho lưu trữ Git chỉ lưu giữ tệp cấu hình mẫu `.env.example` nhằm bảo mật thông tin nhạy cảm. Các thông số thực tế (như `MONGODB_URI`, `JWT_SECRET`) được lưu trữ cục bộ trong tệp `.env` trên máy cá nhân của từng thành viên và đã được loại trừ khỏi lịch sử Git thông qua `.gitignore`.

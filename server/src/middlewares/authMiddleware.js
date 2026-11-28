@@ -1,38 +1,81 @@
 import jwt from 'jsonwebtoken';
+import mongoose from 'mongoose';
 
-export const requireAuth = (req, res, next) => {
-  if (req.user && (req.user._id || req.user.id)) {
-    return next();
-  }
-  const authHeader = req.headers.authorization;
-  const bearerToken =
-    authHeader && authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : null;
-  const token = bearerToken || req.cookies?.token;
+import User, { toPublicUser } from '../models/User.js';
+import { HttpError } from './errorMiddleware.js';
+
+export async function requireAuth(req, _res, next) {
+  const authorization = req.get('authorization') || '';
+  const token = /^Bearer\s+(\S+)$/i.exec(authorization)?.[1];
 
   if (!token) {
-    return res.status(401).json({
-      success: false,
-      message: 'Vui lòng đăng nhập để thực hiện thao tác này',
-    });
+    throw new HttpError(
+      401,
+      'AUTH_REQUIRED',
+      'Bạn cần đăng nhập.',
+    );
   }
+
+  let claims;
 
   try {
-    const secret = process.env.JWT_SECRET || 'unijob_secret_key';
-    const decoded = jwt.verify(token, secret);
-    const userId = decoded._id || decoded.id || decoded.userId;
-
-    if (!userId) {
-      return res.status(401).json({
-        success: false,
-        message: 'Đăng nhập không hợp lệ',
-      });
-    }
-    req.user = { ...decoded, _id: userId, id: userId };
-    return next();
-  } catch (error) {
-    return res.status(401).json({
-      success: false,
-      message: 'Đăng nhập đã hết hạn hoặc không hợp lệ',
+    claims = jwt.verify(token, process.env.JWT_SECRET, {
+      algorithms: ['HS256'],
+      issuer: 'unijob-api',
+      audience: 'unijob-web',
     });
+  } catch {
+    throw new HttpError(
+      401,
+      'INVALID_TOKEN',
+      'Phiên đăng nhập không còn hợp lệ.',
+    );
   }
-};
+
+  if (
+    !claims
+    || typeof claims.sub !== 'string'
+    || !mongoose.isObjectIdOrHexString(claims.sub)
+  ) {
+    throw new HttpError(
+      401,
+      'INVALID_TOKEN',
+      'Phiên đăng nhập không hợp lệ.',
+    );
+  }
+
+  const user = await User.findById(claims.sub);
+
+  if (!user) {
+    throw new HttpError(
+      401,
+      'AUTH_REQUIRED',
+      'Tài khoản không còn tồn tại.',
+    );
+  }
+
+  req.user = toPublicUser(user);
+  next();
+}
+
+export function authorizeRoles(...roles) {
+  return (req, _res, next) => {
+    if (!req.user) {
+      return next(new HttpError(
+        401,
+        'AUTH_REQUIRED',
+        'Bạn cần đăng nhập.',
+      ));
+    }
+
+    if (!roles.includes(req.user.role)) {
+      return next(new HttpError(
+        403,
+        'FORBIDDEN',
+        'Tài khoản không có quyền thực hiện chức năng này.',
+      ));
+    }
+
+    next();
+  };
+}
